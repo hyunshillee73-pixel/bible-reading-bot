@@ -19,6 +19,8 @@ import os
 import json
 import datetime
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -301,7 +303,28 @@ async def cmd_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+class _PingHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"bible-bot is running")
+
+    def log_message(self, format, *args):
+        pass  # 접속 로그를 콘솔에 찍지 않음 (너무 시끄러워서)
+
+
+def start_ping_server():
+    # Render의 무료 Web Service는 외부 HTTP 요청이 있어야 살아있다고 인식합니다.
+    # 이 서버는 그 '살아있음 확인용' 핑을 받기 위한 용도이며, 봇 기능과는 무관합니다.
+    port = int(os.environ.get("PORT", "8080"))
+    server = HTTPServer(("0.0.0.0", port), _PingHandler)
+    log.info("헬스체크 서버 시작 (port %s)", port)
+    server.serve_forever()
+
+
 def main():
+    threading.Thread(target=start_ping_server, daemon=True).start()
+
     token = os.environ["BOT_TOKEN"]
     app = Application.builder().token(token).build()
 
