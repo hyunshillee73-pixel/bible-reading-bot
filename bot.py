@@ -232,6 +232,13 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_date = datetime.date.fromisoformat(start_date_str)
     await post_today_message(update.effective_chat.id, context, sh, start_date)
 
+    today = kst_today()
+    yesterday = today - datetime.timedelta(days=1)
+    if yesterday >= start_date:
+        progress_text = build_progress_text(sh, start_date, yesterday, label="어제까지 진행률")
+        if progress_text:
+            await update.message.reply_text(progress_text)
+
 
 async def daily_job(context: ContextTypes.DEFAULT_TYPE):
     sh = get_sheet()
