@@ -243,6 +243,13 @@ async def daily_job(context: ContextTypes.DEFAULT_TYPE):
     start_date = datetime.date.fromisoformat(start_date_str)
     await post_today_message(int(chat_id), context, sh, start_date)
 
+    today = kst_today()
+    yesterday = today - datetime.timedelta(days=1)
+    if yesterday >= start_date:
+        progress_text = build_progress_text(sh, start_date, yesterday, label="어제까지 진행률")
+        if progress_text:
+            await context.bot.send_message(chat_id=int(chat_id), text=progress_text)
+
 
 async def on_check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -273,6 +280,30 @@ async def on_check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.warning("메시지 수정 실패: %s", e)
 
 
+def build_progress_text(sh, start_date, up_to_date, label="진행률"):
+    elapsed = max((up_to_date - start_date).days + 1, 0)
+    if elapsed <= 0:
+        return None
+
+    records = get_all_checkins(sh)
+    counts = {}
+    for r in records:
+        d = datetime.date.fromisoformat(r["date"])
+        if start_date <= d <= up_to_date:
+            counts[r["name"]] = counts.get(r["name"], 0) + 1
+
+    lines = [f"📊 {label} (경과 {elapsed}일 기준)\n"]
+    if not counts:
+        lines.append("아직 인증 기록이 없습니다.")
+        return "\n".join(lines)
+
+    rows = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+    for name, cnt in rows:
+        pct = min(100, round(cnt / elapsed * 100))
+        lines.append(f"{name} — {cnt}일 인증 ({pct}%)")
+    return "\n".join(lines)
+
+
 async def cmd_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sh = get_sheet()
     ensure_worksheets(sh)
@@ -282,25 +313,8 @@ async def cmd_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     start_date = datetime.date.fromisoformat(start_date_str)
     today = kst_today()
-    elapsed = max((today - start_date).days + 1, 1)
-
-    records = get_all_checkins(sh)
-    counts = {}
-    for r in records:
-        d = datetime.date.fromisoformat(r["date"])
-        if start_date <= d <= today:
-            counts[r["name"]] = counts.get(r["name"], 0) + 1
-
-    if not counts:
-        await update.message.reply_text("아직 인증 기록이 없습니다.")
-        return
-
-    rows = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
-    lines = [f"📊 진행률 (경과 {elapsed}일 기준)\n"]
-    for name, cnt in rows:
-        pct = min(100, round(cnt / elapsed * 100))
-        lines.append(f"{name} — {cnt}일 인증 ({pct}%)")
-    await update.message.reply_text("\n".join(lines))
+    text = build_progress_text(sh, start_date, today, label="진행률")
+    await update.message.reply_text(text)
 
 
 class _PingHandler(BaseHTTPRequestHandler):
