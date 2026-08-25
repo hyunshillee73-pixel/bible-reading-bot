@@ -233,14 +233,15 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("먼저 /setstart YYYY-MM-DD 로 시작일을 설정해주세요.")
         return
     start_date = datetime.date.fromisoformat(start_date_str)
-    await post_today_message(update.effective_chat.id, context, sh, start_date)
-
     today = kst_today()
+
     yesterday = today - datetime.timedelta(days=1)
     if yesterday >= start_date:
         progress_text = build_progress_text(sh, start_date, yesterday, label="어제까지 진행률")
         if progress_text:
             await update.message.reply_text(progress_text)
+
+    await post_today_message(update.effective_chat.id, context, sh, start_date)
 
 
 async def daily_job(context: ContextTypes.DEFAULT_TYPE):
@@ -251,14 +252,15 @@ async def daily_job(context: ContextTypes.DEFAULT_TYPE):
     if not chat_id or not start_date_str:
         return
     start_date = datetime.date.fromisoformat(start_date_str)
-    await post_today_message(int(chat_id), context, sh, start_date)
-
     today = kst_today()
+
     yesterday = today - datetime.timedelta(days=1)
     if yesterday >= start_date:
         progress_text = build_progress_text(sh, start_date, yesterday, label="어제까지 진행률")
         if progress_text:
             await context.bot.send_message(chat_id=int(chat_id), text=progress_text)
+
+    await post_today_message(int(chat_id), context, sh, start_date)
 
 
 async def on_check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
