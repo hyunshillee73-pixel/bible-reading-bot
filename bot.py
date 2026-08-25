@@ -21,6 +21,7 @@ import datetime
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from zoneinfo import ZoneInfo
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -181,9 +182,11 @@ def get_all_checkins(sh):
 
 # ---------- 텔레그램 핸들러 ----------
 
+KST = ZoneInfo("Asia/Seoul")
+
+
 def kst_today():
-    # 필요하면 실제 타임존 라이브러리로 교체하세요. 여기선 서버 로컬 시간 기준.
-    return datetime.date.today()
+    return datetime.datetime.now(KST).date()
 
 
 async def cmd_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -355,8 +358,8 @@ def main():
     app.add_handler(CommandHandler("progress", cmd_progress))
     app.add_handler(CallbackQueryHandler(on_check_button, pattern=r"^check:"))
 
-    # 매일 06:00 (서버 시간 기준)에 자동 게시
-    app.job_queue.run_daily(daily_job, time=datetime.time(hour=6, minute=0))
+    # 매일 한국시간(KST) 06:30 에 자동 게시
+    app.job_queue.run_daily(daily_job, time=datetime.time(hour=6, minute=30, tzinfo=KST))
 
     log.info("봇 시작")
     app.run_polling()
