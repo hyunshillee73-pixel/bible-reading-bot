@@ -253,6 +253,23 @@ async def daily_job(context: ContextTypes.DEFAULT_TYPE):
         return
     start_date = datetime.date.fromisoformat(start_date_str)
     today = kst_today()
+    raw_idx = (today - start_date).days + 1  # 365 제한 없이 실제 경과일
+
+    if raw_idx > TOTAL_DAYS + 1:
+        # 완독 축하 메시지도 이미 보냈고, 새 /setstart 전까지는 조용히 대기
+        return
+
+    if raw_idx == TOTAL_DAYS + 1:
+        # 365일째 다음날 = 완독 다음날, 축하 메시지를 딱 한 번 발송
+        await context.bot.send_message(
+            chat_id=int(chat_id),
+            text=(
+                "🎉🎉 축하합니다! 365일 성경읽기 챌린지를 완주하셨습니다! 🎉🎉\n\n"
+                "구약·신약 전체와 잠언까지 함께 완독한 여러분, 정말 대단해요.\n"
+                "새로운 챌린지를 시작하고 싶다면 /setstart 새시작일 을 입력해주세요."
+            ),
+        )
+        return
 
     yesterday = today - datetime.timedelta(days=1)
     if yesterday >= start_date:
