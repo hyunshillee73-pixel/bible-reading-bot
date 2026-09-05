@@ -210,6 +210,7 @@ async def cmd_setstart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("날짜 형식이 올바르지 않습니다. 예: 2026-09-01")
         return
     set_config_value(sh, "start_date", date_str)
+    set_config_value(sh, "last_sent_date", "")  # 새 시작일 설정 시 발송 기록 초기화
     await update.message.reply_text(f"챌린지 시작일이 {date_str} 로 설정되었습니다.")
 
 
@@ -244,19 +245,36 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await post_today_message(update.effective_chat.id, context, sh, start_date)
 
 
-async def daily_job(context: ContextTypes.DEFAULT_TYPE):
+async def check_and_send_daily(context: ContextTypes.DEFAULT_TYPE):
+    """
+    정해진 시각(06:30 KST)에 딱 한 번만 실행되는 스케줄러 대신,
+    이 함수를 5분마다 반복 실행해서 '아직 오늘 발송 안 했고, 06:30이 지났으면 발송'
+    하는 방식으로 동작합니다. 이렇게 하면 Render가 그 시각 근처에 서버를
+    재시작하더라도 발송을 놓치지 않습니다 (재시작 후에도 계속 확인하니까요).
+    """
     sh = get_sheet()
     ensure_worksheets(sh)
     chat_id = get_config_value(sh, "chat_id")
     start_date_str = get_config_value(sh, "start_date")
     if not chat_id or not start_date_str:
         return
+
+    now = datetime.datetime.now(KST)
+    today = now.date()
+    target_time = datetime.time(hour=6, minute=30)
+    if now.time() < target_time:
+        return  # 아직 오늘 발송 시각(06:30) 전
+
+    last_sent = get_config_value(sh, "last_sent_date")
+    if last_sent == today.isoformat():
+        return  # 오늘 발송은 이미 완료됨, 중복 발송 방지
+
     start_date = datetime.date.fromisoformat(start_date_str)
-    today = kst_today()
     raw_idx = (today - start_date).days + 1  # 365 제한 없이 실제 경과일
 
     if raw_idx > TOTAL_DAYS + 1:
         # 완독 축하 메시지도 이미 보냈고, 새 /setstart 전까지는 조용히 대기
+        set_config_value(sh, "last_sent_date", today.isoformat())
         return
 
     if raw_idx == TOTAL_DAYS + 1:
@@ -269,6 +287,7 @@ async def daily_job(context: ContextTypes.DEFAULT_TYPE):
                 "새로운 챌린지를 시작하고 싶다면 /setstart 새시작일 을 입력해주세요."
             ),
         )
+        set_config_value(sh, "last_sent_date", today.isoformat())
         return
 
     yesterday = today - datetime.timedelta(days=1)
@@ -278,6 +297,7 @@ async def daily_job(context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=int(chat_id), text=progress_text)
 
     await post_today_message(int(chat_id), context, sh, start_date)
+    set_config_value(sh, "last_sent_date", today.isoformat())
 
 
 async def on_check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -377,8 +397,9 @@ def main():
     app.add_handler(CommandHandler("progress", cmd_progress))
     app.add_handler(CallbackQueryHandler(on_check_button, pattern=r"^check:"))
 
-    # 매일 한국시간(KST) 06:30 에 자동 게시
-    app.job_queue.run_daily(daily_job, time=datetime.time(hour=6, minute=30, tzinfo=KST))
+    # 06:30(KST)이 지났고 오늘 아직 발송 안 했으면 보내는 방식으로, 5분마다 확인
+    # (정확히 그 순간에만 실행하는 방식보다 서버 재시작에 훨씬 강합니다)
+    app.job_queue.run_repeating(check_and_send_daily, interval=300, first=10)
 
     log.info("봇 시작")
     app.run_polling()
